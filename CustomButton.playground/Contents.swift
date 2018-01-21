@@ -17,22 +17,42 @@ extension UIView {
     }
 }
 
+public extension UIImage {
+    public convenience init?(color: UIColor, size: CGSize = CGSize(width: 1, height: 1)) {
+        let rect = CGRect(origin: .zero, size: size)
+        UIGraphicsBeginImageContextWithOptions(rect.size, false, 0.0)
+        color.setFill()
+        UIRectFill(rect)
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        guard let cgImage = image!.cgImage else { return nil }
+        self.init(cgImage: cgImage)
+    }
+}
+
 class CHFButton: UIButton {
     
-    @IBInspectable
-    open var enabledColor: UIColor = UIColor(red:0.12, green:0.69, blue:0.11, alpha:1.0)
+    @IBInspectable open var enabledColor: UIColor = UIColor(red:0.40, green:0.80, blue:0.28, alpha:1.0)  {
+        didSet {
+            if (self.isEnabled) {
+                self.backgroundColor = enabledColor
+            }
+        }
+    }
     
-    @IBInspectable
-    open var disabledColor: UIColor = .darkGray
+    @IBInspectable open var disabledColor: UIColor = .darkGray  {
+        didSet {
+            if (!self.isEnabled) {
+                self.backgroundColor = disabledColor
+            }
+        }
+    }
     
-    @IBInspectable
-    open var loaderColor: UIColor = .darkGray
-    
-    @IBInspectable
-    open var accessWhenDisabled: Bool = false
-    
-    open var isLoading: Bool {
-        return loadingState == .loading
+    @IBInspectable open var cornerRadius: CGFloat = 0 {
+        didSet {
+            layer.cornerRadius = cornerRadius
+        }
     }
     
     enum LoadingState {
@@ -40,28 +60,23 @@ class CHFButton: UIButton {
         case loading
     }
     
-    private var loadingState: LoadingState = .normal {
-        didSet {
-            updateButton(forLoading: loadingState)
-        }
+    private var loadingState: LoadingState = .normal
+    
+    open var isLoading: Bool {
+        return loadingState == .loading
     }
     
-    private let activitiIndicator: UIActivityIndicatorView = UIActivityIndicatorView()
-    
-    private var _enabled: Bool = true {
+    override var isEnabled: Bool {
         didSet {
             updateButton()
+            if (isEnabled) {
+                self.blink()
+            }
         }
     }
-    dynamic override var isEnabled: Bool {
-        get {
-            return super.isEnabled
-        }
-        set {
-            _enabled = newValue
-            super.isEnabled = accessWhenDisabled || newValue
-        }
-    }
+    
+    private let sizeDuraction = CFTimeInterval(0.1)
+    private let sizeTimingFunction = CAMediaTimingFunction(name: kCAMediaTimingFunctionLinear)
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -73,89 +88,102 @@ class CHFButton: UIButton {
         commonInit()
     }
     
-    override func awakeFromNib() {
-        super.awakeFromNib()
-        commonInit()
-    }
-    
     private func commonInit() {
-        setupActivitiIndicator()
-        drawApperians()
         
+        drawApperians()
         updateButton()
     }
     
     private func drawApperians() {
-        layer.cornerRadius = 10
-        
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = 0.5
         layer.shadowOffset = CGSize(width: 0, height: 3)
         layer.shadowRadius = 1
     }
     
-    private func setupActivitiIndicator() {
-        activitiIndicator.frame = CGRect(x: 0, y: 0, width: frame.height, height: frame.height)
-        activitiIndicator.center = center
-        activitiIndicator.hidesWhenStopped = true
-        activitiIndicator.color = loaderColor
-        
-        addSubview(activitiIndicator)
-    }
-    
-    private func updateButton(forLoading state: LoadingState) {
-        if (state == .loading) {
-            let circle = transformToCircle()
-            layer.add(circle, forKey: "circle_animation")
-            layer.cornerRadius = bounds.width / 2
-            
-        }
-    }
-    
-    private func transformToCircle() -> CABasicAnimation {
-        let a = CABasicAnimation(keyPath: "cornerRadius")
-        
-        a.duration = 0.5
-        
-        a.fromValue = 10
-        a.toValue = bounds.width / 2
-        
-        a.timingFunction = CAMediaTimingFunction(name: kCAMediaTimingFunctionEaseInEaseOut)
-        
-        return a
-    }
-    
     private func updateButton() {
-        backgroundColor = _enabled ? enabledColor : disabledColor
-        
-        if (_enabled) {
-            self.blink()
-        }
+        backgroundColor = isEnabled ? enabledColor : disabledColor
     }
     
     open func startLoading() {
         if (loadingState != .loading) {
-            loadingState = .loading
+            applyLoadingState()
         }
     }
     
     open func stopLoading() {
         if (loadingState != .normal) {
-            loadingState = .normal
+            applyNormalState()
         }
     }
+    
+    private func applyNormalState() {
+        self.intoOriginalSize()
+        
+        UIView.animate(withDuration: 0.1, delay: sizeDuraction / 2, options: [], animations: {
+            self.layer.cornerRadius = self.cornerRadius
+        }, completion: nil)
+        
+        UIView.animate(withDuration: 0.1, delay: sizeDuraction, options: [], animations: {
+            self.titleLabel?.alpha = 1
+        }) { (success) in
+            self.loadingState = .normal
+            self.isUserInteractionEnabled = true
+        }
+    }
+    
+    private func intoOriginalSize() {
+        let sizeAnim = CABasicAnimation(keyPath: "bounds.size.width")
+        sizeAnim.fromValue = (self.bounds.height)
+        sizeAnim.toValue = (self.bounds.width)
+        sizeAnim.duration = sizeDuraction
+        sizeAnim.timingFunction = sizeTimingFunction
+        sizeAnim.fillMode = kCAFillModeForwards
+        sizeAnim.isRemovedOnCompletion = false
+        self.layer.add(sizeAnim, forKey: sizeAnim.keyPath)
+    }
+    
+    private func applyLoadingState() {
+        self.isUserInteractionEnabled = false
+        
+        titleLabel?.alpha = 0
+        
+        UIView.animate(withDuration: 0.1, animations: { () -> Void in
+            self.layer.cornerRadius = self.frame.height / 2
+        }, completion: { completed -> Void in
+            self.intoSquare()
+            
+            //start animation
+            
+            self.loadingState = .loading
+        })
+    }
+    
+    private func intoSquare() {
+        let squareAnim                   = CABasicAnimation(keyPath: "bounds.size.width")
+        squareAnim.fromValue             = frame.width
+        squareAnim.toValue               = frame.height
+        squareAnim.duration              = sizeDuraction
+        squareAnim.timingFunction        = sizeTimingFunction
+        squareAnim.fillMode              = kCAFillModeForwards
+        squareAnim.isRemovedOnCompletion = false
+        layer.add(squareAnim, forKey: squareAnim.keyPath)
+    }
+    
 }
 
 class VC:UIViewController {
     
-    let b = CHFButton(frame: CGRect(x: 10, y: 10, width: 180, height: 50))
+    let b = CHFButton(type: .custom)
     
     override func loadView() {
         super.loadView()
         
         view.backgroundColor = .white
         
+        b.frame  = CGRect(x: 10, y: 10, width: 320, height: 45)
         b.setTitle("GOOOOO", for: .normal)
+        b.cornerRadius = 10
         b.addTarget(self, action: #selector(tabButton(_:)) , for: .touchUpInside)
         view.addSubview(b)
         
