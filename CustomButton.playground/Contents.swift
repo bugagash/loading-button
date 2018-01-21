@@ -31,7 +31,59 @@ public extension UIImage {
     }
 }
 
-class CHFButton: UIButton {
+class EGLoaderLayer: CAShapeLayer {
+    
+    var loaderColor = UIColor.white {
+        didSet {
+            strokeColor = loaderColor.cgColor
+        }
+    }
+    
+    init(frame:CGRect) {
+        super.init()
+        let radius:CGFloat = (frame.height / 2) * 0.5
+        self.frame = CGRect(x: 0, y: 0, width: frame.height, height: frame.height)
+        
+        let center = CGPoint(x: frame.height / 2, y: bounds.midY)
+        let startAngle = 0 - Double.pi
+        let endAngle = Double.pi * 2 - Double.pi/2
+        let clockwise: Bool = true
+        self.path = UIBezierPath(arcCenter: center, radius: radius, startAngle: CGFloat(startAngle), endAngle: CGFloat(endAngle), clockwise: clockwise).cgPath
+        
+        self.fillColor = nil
+        self.strokeColor = loaderColor.cgColor
+        self.lineWidth = 2
+        
+        self.strokeEnd = 0.4
+        self.isHidden = true
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func animation() {
+        self.isHidden = false
+        let rotate = CABasicAnimation(keyPath: "transform.rotation.z")
+        rotate.fromValue = 0
+        rotate.toValue = Double.pi * 2
+        rotate.duration = 1
+        rotate.timingFunction = CAMediaTimingFunction(name: kCAMediaTimingFunctionEaseInEaseOut)
+        
+        rotate.repeatCount = HUGE
+        rotate.fillMode = kCAFillModeForwards
+        rotate.isRemovedOnCompletion = false
+        self.add(rotate, forKey: rotate.keyPath)
+        
+    }
+    
+    func stopAnimation() {
+        self.isHidden = true
+        self.removeAllAnimations()
+    }
+}
+
+class EGButton: UIButton {
     
     @IBInspectable open var enabledColor: UIColor = UIColor(red:0.40, green:0.80, blue:0.28, alpha:1.0)  {
         didSet {
@@ -75,8 +127,15 @@ class CHFButton: UIButton {
         }
     }
     
+    private lazy var loader: EGLoaderLayer = {
+        let loader = EGLoaderLayer(frame: self.frame)
+        loader.loaderColor = self.titleColor(for: .normal)!
+        self.layer.addSublayer(loader)
+        return loader
+    }()
+    
     private let sizeDuraction = CFTimeInterval(0.1)
-    private let sizeTimingFunction = CAMediaTimingFunction(name: kCAMediaTimingFunctionLinear)
+    private let sizeTimingFunction = CAMediaTimingFunction(name: kCAMediaTimingFunctionEaseInEaseOut)
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -126,6 +185,7 @@ class CHFButton: UIButton {
         
         UIView.animate(withDuration: 0.1, delay: sizeDuraction, options: [], animations: {
             self.titleLabel?.alpha = 1
+            self.loader.stopAnimation()
         }) { (success) in
             self.loadingState = .normal
             self.isUserInteractionEnabled = true
@@ -153,7 +213,7 @@ class CHFButton: UIButton {
         }, completion: { completed -> Void in
             self.intoSquare()
             
-            //start animation
+            self.loader.animation()
             
             self.loadingState = .loading
         })
@@ -174,7 +234,7 @@ class CHFButton: UIButton {
 
 class VC:UIViewController {
     
-    let b = CHFButton(type: .custom)
+    let b = EGButton(type: .custom)
     
     override func loadView() {
         super.loadView()
@@ -188,14 +248,14 @@ class VC:UIViewController {
         view.addSubview(b)
         
         
-        let b2 = CHFButton(frame: CGRect(x: 10, y: 70, width: 180, height: 50))
+        let b2 = EGButton(frame: CGRect(x: 10, y: 70, width: 180, height: 50))
         b2.backgroundColor = .gray
         b2.setTitle("enable/disable", for: .normal)
         b2.addTarget(self, action: #selector(tabButton2(_:)) , for: .touchUpInside)
         
         view.addSubview(b2)
         
-        let b3 = CHFButton(frame: CGRect(x: 10, y: 130, width: 180, height: 50))
+        let b3 = EGButton(frame: CGRect(x: 10, y: 130, width: 180, height: 50))
         b3.backgroundColor = .gray
         b3.setTitle("start/stop", for: .normal)
         b3.addTarget(self, action: #selector(tabButton3(_:)) , for: .touchUpInside)
@@ -208,15 +268,13 @@ class VC:UIViewController {
     }
     
     @objc func tabButton2(_ sender: UIButton) {
-        b.isEnabled = !b.isEnabled
+        b.isEnabled = false
+        b.startLoading()
     }
     
     @objc func tabButton3(_ sender: UIButton) {
-        if (b.isLoading) {
-            b.stopLoading()
-        } else {
-            b.startLoading()
-        }
+        b.stopLoading()
+        b.isEnabled = true
     }
 }
 
